@@ -1,0 +1,14 @@
+# Burner wallets config (wallet_id, pubkey, state).
+# States: ACTIVE, PAUSED, COOLDOWN, DISABLED, DRAINED.
+# Generate real entries with: python tools/generate_burner_wallets.py N
+
+wallets:
+  - wallet_id: burner_1
+    pubkey: placeholder
+    state: ACTIVE
+  - wallet_id: burner_2
+    pubkey: placeholder
+    state: ACTIVE
+  - wallet_id: burner_3
+    pubkey: placeholder
+    state: ACTIVE

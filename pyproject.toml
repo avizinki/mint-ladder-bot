@@ -1,0 +1,39 @@
+[project]
+name = "mint-ladder-bot"
+version = "0.1.0"
+description = "Console Solana mint ladder trading bot with status snapshotting, plan visualization, and Jupiter-powered live trading."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "Mint Ladder Bot", email = "example@example.com" }
+]
+dependencies = [
+  "typer[all]>=0.12.0",
+  "rich>=13.0.0",
+  "httpx>=0.27.0",
+  "pydantic>=2.6.0",
+  "solders>=0.27.1",
+  "python-telegram-bot>=21.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+]
+
+[project.scripts]
+mint-ladder-bot = "mint_ladder_bot.main:app"
+mint-ladder-telegram-bot = "telegram_bot.telegram_bot:main"
+transfer-provenance-report = "mint_ladder_bot.transfer_provenance_report_cli:entry"
+trusted-transfer-scratch-report = "mint_ladder_bot.trusted_transfer_scratch_cli:entry"
+trusted-transfer-reconciliation-compare = "mint_ladder_bot.reconciliation_compare_cli:entry"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mint_ladder_bot*", "telegram_bot*"]
+

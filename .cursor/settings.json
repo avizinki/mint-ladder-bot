@@ -1,0 +1,8 @@
+{
+  "plugins": {
+    "phantom-connect": {
+      "enabled": true
+    }
+  },
+  "python.defaultInterpreterPath": ".venv/bin/python"
+}

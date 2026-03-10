@@ -1,0 +1,13 @@
+{
+  "wallets": [
+    { "wallet_id": "wallet_a", "state": "active" },
+    { "wallet_id": "wallet_b", "state": "paused" },
+    { "wallet_id": "wallet_c", "state": "cooldown" }
+  ],
+  "lane_assignments": [
+    { "wallet_id": "wallet_a", "lane_id": "lane_1", "enabled": true },
+    { "wallet_id": "wallet_a", "lane_id": "lane_2", "enabled": true },
+    { "wallet_id": "wallet_b", "lane_id": "lane_1", "enabled": true },
+    { "wallet_id": "wallet_c", "lane_id": "lane_1", "enabled": false }
+  ]
+}

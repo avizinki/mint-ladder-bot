@@ -1,0 +1,44 @@
+# Secrets and local config (never commit)
+.env
+.telegram_token
+
+# Runtime and generated files (must never live in source tree; runtime/ is canonical)
+runtime/
+logs/
+state.json
+state.json.bak.*
+status.json
+events.jsonl
+run.log
+health_status.json
+safety_state.json
+.monitor_*
+*.wav
+alerts.json
+.lane_state.json
+*.tmp
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.eggs/
+dist/
+build/
+*.egg-info/
+*.egg
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Tests / coverage
+.pytest_cache/
+.coverage
+htmlcov/
