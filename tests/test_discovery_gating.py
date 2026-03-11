@@ -40,7 +40,7 @@ def _make_cfg(review_only: bool = True, mode: str = "live") -> Config:
     cfg = Config()
     cfg.discovery_enabled = True
     cfg.discovery_review_only = review_only
-    cfg.sniper_min_score = 0.0  # accept all
+    cfg.discovery_min_score = 0.0  # accept all
     cfg.sniper_min_liquidity_sol_equiv = 0.0
     cfg.discovery_max_candidates_per_cycle = 10
     cfg.sniper_enabled = True

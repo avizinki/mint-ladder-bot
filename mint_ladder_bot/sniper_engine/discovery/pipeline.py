@@ -78,7 +78,7 @@ class DiscoveryPipeline:
 
         max_per_cycle = getattr(self.config, "discovery_max_candidates_per_cycle", 5)
         source_allowlist = getattr(self.config, "discovery_source_allowlist", None) or None
-        min_score = getattr(self.config, "sniper_min_score", DEFAULT_MIN_SCORE)
+        min_score = getattr(self.config, "discovery_min_score", DEFAULT_MIN_SCORE)
         min_liq_usd = getattr(self.config, "sniper_min_liquidity_sol_equiv", 5_000.0)
 
         # Fetch raw candidates from all enabled sources

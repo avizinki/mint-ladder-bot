@@ -49,7 +49,7 @@ def _make_cfg() -> Config:
     cfg.discovery_enabled = True
     cfg.discovery_review_only = True
     cfg.discovery_max_candidates_per_cycle = 10
-    cfg.sniper_min_score = 0.0  # accept any score for dedup tests
+    cfg.discovery_min_score = 0.0  # accept any score for dedup tests
     cfg.sniper_min_liquidity_sol_equiv = 0.0
     return cfg
 

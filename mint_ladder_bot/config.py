@@ -238,6 +238,9 @@ class Config:
     discovery_review_only: bool = os.getenv("DISCOVERY_REVIEW_ONLY", "true").strip().lower() not in ("0", "false", "no")
     # Optional path to watchlist YAML/JSON file (list of mints or {mint, symbol, note}).
     discovery_watchlist_path: Optional[str] = os.getenv("DISCOVERY_WATCHLIST_PATH") or None
+    # Minimum score for discovery pipeline to accept a candidate. Separate from sniper_min_score
+    # (execution quality bar). Lower default (0.3) allows watchlist entries with partial metadata.
+    discovery_min_score: float = _env_float("DISCOVERY_MIN_SCORE", 0.3)
     # Bounded history sizes for dashboard.
     discovery_max_history: int = _env_int("DISCOVERY_MAX_HISTORY", 200)
     discovery_max_rejected: int = _env_int("DISCOVERY_MAX_REJECTED", 200)

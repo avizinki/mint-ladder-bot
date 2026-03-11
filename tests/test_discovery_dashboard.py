@@ -142,6 +142,32 @@ def test_discovery_is_top_level_in_build_dashboard_payload(tmp_path) -> None:
     assert isinstance(payload["discovery"], dict)
 
 
+def test_discovery_section_has_review_only_flag() -> None:
+    """review_only must be present and a bool in the section."""
+    section = _build_discovery_section(None)
+    assert "review_only" in section
+    assert isinstance(section["review_only"], bool)
+
+
+def test_discovery_section_full_mint_address() -> None:
+    """Mint address must be the full address, not truncated."""
+    full_mint = "A" * 44
+    now = datetime.now(tz=timezone.utc).isoformat()
+    state = {
+        "discovery_recent_candidates": [
+            {"mint": full_mint, "source_id": "watchlist", "symbol": "T", "score": 0.5,
+             "outcome": "accepted", "liquidity_usd": None, "discovered_at": now}
+        ],
+        "discovery_rejected_candidates": [
+            {"mint": full_mint, "source_id": "test", "symbol": None, "rejection_reason": "score_blocked",
+             "score": 0.1, "discovered_at": now}
+        ],
+    }
+    section = _build_discovery_section(state)
+    assert section["recent_candidates"][0]["mint"] == full_mint
+    assert section["recent_rejected"][0]["mint"] == full_mint
+
+
 def test_discovery_top_level_reads_state(tmp_path) -> None:
     """discovery top-level key reflects state when state.json is present."""
     import json

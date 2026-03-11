@@ -32,7 +32,7 @@ def _make_cfg() -> Config:
     cfg = Config()
     cfg.discovery_enabled = True
     cfg.discovery_review_only = True
-    cfg.sniper_min_score = 0.0
+    cfg.discovery_min_score = 0.0
     cfg.sniper_min_liquidity_sol_equiv = 0.0
     cfg.discovery_max_candidates_per_cycle = 20
     cfg.discovery_max_history = 5
@@ -120,7 +120,7 @@ def test_recent_candidates_bounded_to_max_history() -> None:
 def test_rejected_candidates_bounded_to_max_rejected() -> None:
     cfg = _make_cfg()
     cfg.discovery_max_rejected = 2
-    cfg.sniper_min_score = 0.99  # reject everything (no candidate has score >= 0.99 without high signal)
+    cfg.discovery_min_score = 0.99  # reject everything (no candidate has score >= 0.99 without high signal)
     state = _make_state()
     pipeline = DiscoveryPipeline(cfg)
 

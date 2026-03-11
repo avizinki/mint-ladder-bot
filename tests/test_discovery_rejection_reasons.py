@@ -39,7 +39,7 @@ def _make_cfg(min_score: float = 0.5, min_liq: float = 5000.0) -> Config:
     cfg = Config()
     cfg.discovery_enabled = True
     cfg.discovery_review_only = True
-    cfg.sniper_min_score = min_score
+    cfg.discovery_min_score = min_score
     cfg.sniper_min_liquidity_sol_equiv = min_liq
     cfg.discovery_max_candidates_per_cycle = 20
     return cfg
