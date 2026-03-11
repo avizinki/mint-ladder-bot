@@ -1204,10 +1204,13 @@ class _DashboardHandler(BaseHTTPRequestHandler):
         t0 = time.monotonic()
         path = self.path.split("?")[0].rstrip("/")
         if path == "" or path == "/":
-            index_path = self.data_dir / "index.html"
-            if index_path.exists():
+            # Serve the bundled dashboard HTML from the package's static directory.
+            # The HTML lives at mint_ladder_bot/static/dashboard.html (source-controlled).
+            # Runtime data_dir is for generated artifacts only (state.json, events.jsonl, etc.).
+            _static_html = Path(__file__).parent / "static" / "dashboard.html"
+            if _static_html.exists():
                 try:
-                    body = index_path.read_bytes()
+                    body = _static_html.read_bytes()
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self.send_header("Content-Length", str(len(body)))
@@ -1215,13 +1218,14 @@ class _DashboardHandler(BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(body)
                 except Exception as e:
-                    logger.warning("Serve index.html failed: %s", e)
+                    logger.warning("Serve dashboard.html failed: %s", e)
                     self.send_response(200)
                     self.send_header("Content-Type", "text/plain")
                     self._send_no_cache_headers()
                     self.end_headers()
                     self.wfile.write(b"OK")
             else:
+                logger.warning("dashboard.html not found at %s", _static_html)
                 self.send_response(200)
                 self.send_header("Content-Type", "text/plain")
                 self._send_no_cache_headers()

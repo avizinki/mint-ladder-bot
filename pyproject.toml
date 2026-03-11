@@ -37,3 +37,6 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["mint_ladder_bot*", "telegram_bot*"]
 
+[tool.setuptools.package-data]
+mint_ladder_bot = ["static/*.html"]
+
