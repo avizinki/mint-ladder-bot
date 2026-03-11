@@ -109,6 +109,77 @@ def _last_cycle_from_log(log_path: Path) -> Optional[int]:
     return int(match.group(1)) if match else None
 
 
+def _build_discovery_section(state: Dict[str, Any] | None) -> Dict[str, Any]:
+    """
+    Build the top-level discovery section for the dashboard payload.
+    Read-only: derived purely from state fields written by DiscoveryPipeline.
+    """
+    s = state or {}
+    disc_stats = s.get("discovery_stats") or {}
+    recent = s.get("discovery_recent_candidates") or []
+    rejected = s.get("discovery_rejected_candidates") or []
+
+    # Source breakdown from stats
+    by_source: Dict[str, int] = {}
+    by_rejection: Dict[str, int] = {}
+    if isinstance(disc_stats, dict):
+        by_source = disc_stats.get("by_source") or {}
+        by_rejection = disc_stats.get("by_rejection_reason") or {}
+
+    # review_only mode flag: read from env so operators can see gating mode at a glance.
+    review_only: bool = os.getenv("DISCOVERY_REVIEW_ONLY", "true").strip().lower() not in ("0", "false", "no")
+
+    # Last 10 recent (accepted/enqueued) for display — full mint address for operator review/enqueue.
+    recent_display: List[Dict[str, Any]] = []
+    if isinstance(recent, list):
+        for rec in recent[-10:]:
+            if not isinstance(rec, dict):
+                continue
+            recent_display.append({
+                "mint": rec.get("mint", ""),
+                "source_id": rec.get("source_id"),
+                "symbol": rec.get("symbol"),
+                "score": rec.get("score"),
+                "outcome": rec.get("outcome"),
+                "liquidity_usd": rec.get("liquidity_usd"),
+                "discovered_at": rec.get("discovered_at"),
+            })
+
+    # Last 5 rejected with reasons — full mint address for debugging.
+    rejected_display: List[Dict[str, Any]] = []
+    if isinstance(rejected, list):
+        for rec in rejected[-5:]:
+            if not isinstance(rec, dict):
+                continue
+            rejected_display.append({
+                "mint": rec.get("mint", ""),
+                "source_id": rec.get("source_id"),
+                "symbol": rec.get("symbol"),
+                "rejection_reason": rec.get("rejection_reason"),
+                "score": rec.get("score"),
+                "discovered_at": rec.get("discovered_at"),
+            })
+
+    total_disc = disc_stats.get("total_discovered", 0) if isinstance(disc_stats, dict) else 0
+    total_acc = disc_stats.get("total_accepted", 0) if isinstance(disc_stats, dict) else 0
+    total_rej = disc_stats.get("total_rejected", 0) if isinstance(disc_stats, dict) else 0
+    total_enq = disc_stats.get("total_enqueued", 0) if isinstance(disc_stats, dict) else 0
+
+    return {
+        "review_only": review_only,
+        "total_discovered": total_disc,
+        "total_accepted": total_acc,
+        "total_rejected": total_rej,
+        "total_enqueued": total_enq,
+        "source_breakdown": by_source,
+        "rejection_reason_breakdown": by_rejection,
+        "recent_accepted_count": len(recent) if isinstance(recent, list) else 0,
+        "recent_rejected_count": len(rejected) if isinstance(rejected, list) else 0,
+        "recent_candidates": recent_display,
+        "recent_rejected": rejected_display,
+    }
+
+
 def _build_sniper_summary(state: Dict[str, Any] | None) -> Dict[str, Any]:
     sniper_state = state or {}
     sniper_stats = sniper_state.get("sniper_stats") or {}
@@ -393,6 +464,7 @@ def build_dashboard_payload(data_dir: Path) -> Dict[str, Any]:
         "sniper_summary": sniper_summary,
         "sniper_pending_attempts": [],
         "sniper_recent_decisions": [],
+        "discovery": _build_discovery_section(state if isinstance(state, dict) else None),
     }
     if cycle_index is not None:
         payload["cycle_index"] = cycle_index
