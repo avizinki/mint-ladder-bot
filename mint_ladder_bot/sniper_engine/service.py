@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from time import time
 from typing import Optional, Tuple
 
@@ -79,6 +80,62 @@ class SniperService:
             return False, "blocked_mint_state", len(self.state.sniper_manual_seed_queue)
         return True, None, len(self.state.sniper_manual_seed_queue)
 
+    def approve_discovery_candidate(
+        self,
+        mint: str,
+        operator_id: Optional[str] = None,
+    ) -> EnqueueResult:
+        """
+        Operator-approve a discovery candidate that is in review_only accepted state.
+
+        Validates that:
+        - The mint has a record in discovery_recent_candidates with outcome="accepted"
+        - The mint is not already enqueued (would also be caught by enqueue_manual_seed)
+
+        On success:
+        - Calls enqueue_manual_seed with note="discovery_operator_approval"
+        - Updates the record's provenance fields: approval_path, operator_approved_at,
+          operator_approved_by, enqueue_source, outcome
+        - Bumps discovery_stats.total_enqueued
+
+        Returns (accepted, reason, queue_size).
+        """
+        mint = (mint or "").strip()
+        if not mint:
+            return False, "invalid_mint", len(self.state.sniper_manual_seed_queue)
+
+        # Find existing accepted discovery record
+        accepted_record = None
+        for rec in self.state.discovery_recent_candidates:
+            if rec.mint == mint and rec.outcome == "accepted":
+                accepted_record = rec
+                break
+
+        if accepted_record is None:
+            # Also check if already enqueued (operator trying to double-approve)
+            for rec in self.state.discovery_recent_candidates:
+                if rec.mint == mint and rec.outcome == "enqueued":
+                    return False, "already_enqueued", len(self.state.sniper_manual_seed_queue)
+            return False, "not_found_or_not_accepted", len(self.state.sniper_manual_seed_queue)
+
+        note = f"discovery_operator_approval:{accepted_record.source_id}"
+        ok, reason, queue_size = self.enqueue_manual_seed(mint, note=note)
+        if not ok:
+            return False, reason, queue_size
+
+        # Update provenance fields on the existing record
+        now = datetime.now(tz=timezone.utc)
+        accepted_record.outcome = "enqueued"
+        accepted_record.approval_path = "operator_manual"
+        accepted_record.operator_approved_at = now
+        accepted_record.operator_approved_by = operator_id or "operator"
+        accepted_record.enqueue_source = "discovery_operator_approval"
+        self.state.discovery_stats.total_enqueued += 1
+        from .discovery.pipeline import _bump_source_sub_stat
+        _bump_source_sub_stat(self.state.discovery_stats, accepted_record.source_id, "enqueued")
+
+        return True, None, queue_size
+
     def dequeue_next_manual_seed_batch(self, limit: int):
         """Thin wrapper around runtime helper for future processing; currently unused when disabled."""
         if not self.is_enabled():
@@ -122,10 +179,19 @@ class SniperService:
 
         pipeline = DiscoveryPipeline(config=self.config)
 
-        # Only pass enqueue_fn when gating allows live enqueue.
-        review_only = getattr(self.config, "discovery_review_only", True)
+        # Pass enqueue_fn when any source has auto-enqueue enabled (review_only=False).
+        # Per-source overrides can unlock individual sources while global remains advisory.
+        global_review_only = getattr(self.config, "discovery_review_only", True)
+        per_source_overrides = [
+            getattr(self.config, "discovery_review_only_watchlist", None),
+            getattr(self.config, "discovery_review_only_pumpfun", None),
+            getattr(self.config, "discovery_review_only_whale_copy", None),
+            getattr(self.config, "discovery_review_only_momentum", None),
+        ]
+        any_auto_enqueue = not global_review_only or any(v is False for v in per_source_overrides)
+
         enqueue_fn = None
-        if not review_only and self.mode() in ("live", "paper"):
+        if any_auto_enqueue and self.mode() in ("live", "paper"):
             enqueue_fn = self.enqueue_manual_seed
 
         pipeline.run(state=self.state, enqueue_fn=enqueue_fn)

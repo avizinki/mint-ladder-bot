@@ -30,6 +30,16 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_optional_bool(name: str) -> Optional[bool]:
+    """Return True/False if env var is set to a truthy/falsy value, else None (not set)."""
+    val = (os.getenv(name) or "").strip().lower()
+    if val in ("1", "true", "yes"):
+        return True
+    if val in ("0", "false", "no"):
+        return False
+    return None
+
+
 def _jupiter_urls() -> tuple[str, str]:
     base = os.getenv("JUPITER_BASE_URL", "").strip().rstrip("/")
     if base:
@@ -92,6 +102,11 @@ class Config:
         # Discovery source allowlist (empty = all registered sources are allowed)
         disc_allow = (os.getenv("DISCOVERY_SOURCE_ALLOWLIST") or "").strip()
         self.discovery_source_allowlist = [s.strip() for s in disc_allow.split(",") if s.strip()] if disc_allow else []
+        # Per-source review-only overrides (None = use global discovery_review_only)
+        self.discovery_review_only_watchlist = _env_optional_bool("DISCOVERY_REVIEW_ONLY_WATCHLIST")
+        self.discovery_review_only_pumpfun = _env_optional_bool("DISCOVERY_REVIEW_ONLY_PUMPFUN")
+        self.discovery_review_only_whale_copy = _env_optional_bool("DISCOVERY_REVIEW_ONLY_WHALE_COPY")
+        self.discovery_review_only_momentum = _env_optional_bool("DISCOVERY_REVIEW_ONLY_MOMENTUM")
 
     # Trading
     trading_bag_pct: float = _env_float("TRADING_BAG_PCT", 0.20)
@@ -263,6 +278,11 @@ class Config:
     discovery_holder_top10_max_pct: float = _env_float("DISCOVERY_HOLDER_TOP10_MAX_PCT", 80.0)
     # LP unlock risk hard-block (stage 5, disabled by default)
     discovery_lp_unlock_risk_enabled: bool = os.getenv("DISCOVERY_LP_UNLOCK_RISK_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    # Per-source review-only overrides. None = use global discovery_review_only. Set in __post_init__.
+    discovery_review_only_watchlist: Optional[bool] = None
+    discovery_review_only_pumpfun: Optional[bool] = None
+    discovery_review_only_whale_copy: Optional[bool] = None
+    discovery_review_only_momentum: Optional[bool] = None
 
     # Files
     # Defaults point at centralized runtime paths; callers may override explicitly.

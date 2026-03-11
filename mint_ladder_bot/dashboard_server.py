@@ -124,6 +124,21 @@ def _build_discovery_section(state: Dict[str, Any] | None) -> Dict[str, Any]:
     # review_only mode flag: read from env so operators can see gating mode at a glance.
     review_only: bool = os.getenv("DISCOVERY_REVIEW_ONLY", "true").strip().lower() not in ("0", "false", "no")
 
+    # Per-source review-only overrides (None = not set, uses global)
+    _source_override_env_map = {
+        "watchlist": "DISCOVERY_REVIEW_ONLY_WATCHLIST",
+        "pumpfun": "DISCOVERY_REVIEW_ONLY_PUMPFUN",
+        "whale_copy": "DISCOVERY_REVIEW_ONLY_WHALE_COPY",
+        "momentum": "DISCOVERY_REVIEW_ONLY_MOMENTUM",
+    }
+    review_only_overrides: Dict[str, bool] = {}
+    for _src, _env in _source_override_env_map.items():
+        _val = (os.getenv(_env) or "").strip().lower()
+        if _val in ("1", "true", "yes"):
+            review_only_overrides[_src] = True
+        elif _val in ("0", "false", "no"):
+            review_only_overrides[_src] = False
+
     # Last 10 recent (accepted/enqueued) for display — full mint address for operator review/enqueue.
     recent_display: List[Dict[str, Any]] = []
     if isinstance(recent, list):
@@ -182,6 +197,7 @@ def _build_discovery_section(state: Dict[str, Any] | None) -> Dict[str, Any]:
 
     return {
         "review_only": review_only,
+        "review_only_overrides": review_only_overrides,
         "total_discovered": ds.get("total_discovered", 0),
         "total_accepted": ds.get("total_accepted", 0),
         "total_rejected": ds.get("total_rejected", 0),
