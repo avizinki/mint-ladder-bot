@@ -19,9 +19,10 @@ class DiscoveredCandidate:
     """
     Normalized discovery candidate — ephemeral, in-memory only.
 
-    source_id: stable identifier e.g. "pumpfun" | "watchlist" | "test"
+    source_id: stable identifier e.g. "pumpfun" | "watchlist" | "whale_copy" | "test"
     source_confidence: 0.0–1.0 hint from the source (not a risk score)
     score: filled by scoring.score_candidate(); None until scored
+    discovery_signals: structured signal data from the source adapter
     """
 
     mint: str
@@ -33,6 +34,7 @@ class DiscoveredCandidate:
     deployer: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
     score: Optional[float] = None
+    discovery_signals: Dict[str, Any] = field(default_factory=dict)
 
 
 def make_candidate(
@@ -44,6 +46,7 @@ def make_candidate(
     deployer: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
     discovered_at: Optional[datetime] = None,
+    discovery_signals: Optional[Dict[str, Any]] = None,
 ) -> DiscoveredCandidate:
     """Convenience constructor with defaults."""
     return DiscoveredCandidate(
@@ -55,4 +58,5 @@ def make_candidate(
         liquidity_usd=liquidity_usd,
         deployer=deployer,
         metadata=metadata or {},
+        discovery_signals=discovery_signals or {},
     )

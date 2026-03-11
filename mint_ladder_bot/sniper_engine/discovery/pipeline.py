@@ -4,22 +4,26 @@ Discovery pipeline.
 Single entry point: DiscoveryPipeline.run()
 
 Flow:
-  fetch from sources → deduplicate → filter (token_filter) → score
+  fetch from sources → deduplicate → filter (token_filter) → enrich → score
   → gate (review_only / sniper_mode) → record to state → optionally enqueue
 
 Rules:
 - discovery_enabled=False → immediate no-op (state unchanged)
 - duplicate mint (already in recent history / queue / open lot) → rejected
 - token_filter rejection → rejected with stable reason code
+- enrichment hard-block → rejected with enrichment reason code
+- enrichment failure (partial) → candidate proceeds with score penalty, not rejected
 - score below threshold → rejected with "score_blocked"
 - discovery_review_only=True (default) → accepted candidates recorded but NOT enqueued
 - discovery_review_only=False + sniper_mode=live → may enqueue
 - live execution always requires explicit double-gate (review_only=False AND sniper_mode=live)
+- metadata_blob is truncated to 2048 bytes at record creation (mitigation #4)
 
 No changes are made to runner logic. Pipeline is called from SniperService.process_candidate_queue().
 """
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -29,6 +33,7 @@ from ...config import Config
 from ...models import DiscoveredCandidateRecord, DiscoveryStats, RuntimeState
 from ..runtime import queue_contains_mint, pending_attempt_exists_for_mint, open_lot_exists_for_mint
 from ..token_filter import filter_candidate, FilterResult, REASON_OK
+from .enrichment import CandidateEnricher, EnrichmentResult, make_enricher_from_config
 from .model import DiscoveredCandidate
 from .registry import fetch_from_sources
 from .scoring import score_candidate, passes_score_threshold, DEFAULT_MIN_SCORE
@@ -44,14 +49,24 @@ REASON_OPEN_LOT = "open_lot_exists"
 REASON_SCORE_BLOCKED = "score_blocked"
 REASON_REVIEW_ONLY = "review_only"  # accepted but not enqueued — not a real rejection
 
+# metadata_blob max size in bytes (mitigation #4)
+_METADATA_MAX_BYTES = 2048
+
 
 class DiscoveryPipeline:
     """
     Stateless pipeline object. State and config injected per call.
+    Enricher is constructed lazily and reused across calls.
     """
 
     def __init__(self, config: Config) -> None:
         self.config = config
+        self._enricher: Optional[CandidateEnricher] = None
+
+    def _get_enricher(self) -> CandidateEnricher:
+        if self._enricher is None:
+            self._enricher = make_enricher_from_config(self.config)
+        return self._enricher
 
     # ------------------------------------------------------------------
     # Public API
@@ -81,6 +96,9 @@ class DiscoveryPipeline:
         min_score = getattr(self.config, "discovery_min_score", DEFAULT_MIN_SCORE)
         min_liq_usd = getattr(self.config, "sniper_min_liquidity_sol_equiv", 5_000.0)
 
+        # Per-cycle enrichment cache — cleared each run()
+        cycle_cache: Dict[str, EnrichmentResult] = {}
+
         # Fetch raw candidates from all enabled sources
         raw_candidates = fetch_from_sources(
             source_allowlist=source_allowlist,
@@ -102,14 +120,19 @@ class DiscoveryPipeline:
                 continue
             seen_this_cycle.add(candidate.mint)
 
-            record, should_enqueue = self._process_one(candidate, state, min_score, min_liq_usd)
+            record, should_enqueue = self._process_one(
+                candidate, state, min_score, min_liq_usd, cycle_cache
+            )
 
             if should_enqueue and enqueue_fn is not None:
                 note = f"discovery:{candidate.source_id}"
                 accepted, reason, _ = enqueue_fn(candidate.mint, note=note)
                 if accepted:
                     record.outcome = "enqueued"
+                    record.enqueue_source = "discovery_auto"
+                    record.approval_path = "auto"
                     state.discovery_stats.total_enqueued += 1
+                    _bump_source_sub_stat(state.discovery_stats, candidate.source_id, "enqueued")
                     logger.info(
                         "DISCOVERY_ENQUEUED mint=%s source=%s score=%.2f",
                         candidate.mint[:12], candidate.source_id,
@@ -151,6 +174,7 @@ class DiscoveryPipeline:
         state: RuntimeState,
         min_score: float,
         min_liq_usd: float,
+        cycle_cache: Optional[Dict[str, EnrichmentResult]] = None,
     ) -> Tuple[DiscoveredCandidateRecord, bool]:
         """
         Evaluate one candidate. Returns (record, should_enqueue).
@@ -159,7 +183,18 @@ class DiscoveryPipeline:
         """
         now = datetime.now(tz=timezone.utc)
 
-        # --- Build base record ---
+        if cycle_cache is None:
+            cycle_cache = {}
+
+        # --- Build base record with truncated metadata_blob (mitigation #4) ---
+        raw_meta = dict(candidate.metadata)
+        truncated, meta_blob = _truncate_metadata(raw_meta)
+        if truncated:
+            logger.warning(
+                "DISCOVERY_METADATA_TRUNCATED mint=%s source=%s",
+                candidate.mint[:12], candidate.source_id,
+            )
+
         record = DiscoveredCandidateRecord(
             record_id=str(uuid.uuid4()),
             mint=candidate.mint,
@@ -169,11 +204,15 @@ class DiscoveryPipeline:
             symbol=candidate.symbol,
             liquidity_usd=candidate.liquidity_usd,
             deployer=candidate.deployer,
-            metadata_blob=dict(candidate.metadata),
+            metadata_blob=meta_blob,
+            metadata_truncated=truncated,
             score=None,
+            score_breakdown={},
             outcome="pending",
             rejection_reason=None,
             processed_at=now,
+            discovery_signals=dict(candidate.discovery_signals),
+            enrichment_data={},
         )
 
         # --- Duplicate / state gates ---
@@ -185,6 +224,7 @@ class DiscoveryPipeline:
             state.discovery_stats.total_rejected += 1
             state.discovery_stats.total_discovered += 1
             _bump_source_stat(state.discovery_stats, candidate.source_id)
+            _bump_source_sub_stat(state.discovery_stats, candidate.source_id, "rejected")
             logger.debug("DISCOVERY_REJECTED mint=%s reason=%s", candidate.mint[:12], rejection)
             return record, False
 
@@ -214,16 +254,52 @@ class DiscoveryPipeline:
             state.discovery_stats.total_rejected += 1
             state.discovery_stats.total_discovered += 1
             _bump_source_stat(state.discovery_stats, candidate.source_id)
+            _bump_source_sub_stat(state.discovery_stats, candidate.source_id, "rejected")
             logger.debug(
                 "DISCOVERY_FILTER_REJECTED mint=%s reason=%s",
                 candidate.mint[:12], filter_result.reason,
             )
             return record, False
 
-        # --- Score ---
-        score = score_candidate(candidate, min_liquidity_usd=min_liq_usd)
+        # --- Enrichment (mitigation #2: soft-failure) ---
+        enricher = self._get_enricher()
+        enrich_result = enricher.enrich(
+            mint=candidate.mint,
+            candidate_liquidity_usd=candidate.liquidity_usd,
+            cycle_cache=cycle_cache,
+        )
+        record.enrichment_data = enrich_result.data
+
+        # Track enrichment stats
+        state.discovery_stats.enrichment_checks_run += 1
+        if enrich_result.partial:
+            state.discovery_stats.enrichment_partial_count += 1
+
+        if enrich_result.hard_block:
+            # Confirmed risk — hard-block
+            state.discovery_stats.enrichment_hard_reject_count += 1
+            record.outcome = "rejected"
+            record.rejection_reason = enrich_result.rejection_reason or "enrichment_risk"
+            _bump_rejection_stat(state.discovery_stats, record.rejection_reason)
+            state.discovery_stats.total_rejected += 1
+            state.discovery_stats.total_discovered += 1
+            _bump_source_stat(state.discovery_stats, candidate.source_id)
+            _bump_source_sub_stat(state.discovery_stats, candidate.source_id, "rejected")
+            logger.info(
+                "DISCOVERY_ENRICHMENT_REJECTED mint=%s reason=%s",
+                candidate.mint[:12], record.rejection_reason,
+            )
+            return record, False
+
+        # --- Score (with enrichment data for partial penalty) ---
+        score, score_breakdown = score_candidate(
+            candidate,
+            min_liquidity_usd=min_liq_usd,
+            enrichment_data=enrich_result.data if enrich_result.partial else None,
+        )
         candidate.score = score
         record.score = score
+        record.score_breakdown = score_breakdown
 
         if not passes_score_threshold(score, min_score):
             record.outcome = "rejected"
@@ -232,6 +308,7 @@ class DiscoveryPipeline:
             state.discovery_stats.total_rejected += 1
             state.discovery_stats.total_discovered += 1
             _bump_source_stat(state.discovery_stats, candidate.source_id)
+            _bump_source_sub_stat(state.discovery_stats, candidate.source_id, "rejected")
             logger.debug(
                 "DISCOVERY_SCORE_BLOCKED mint=%s score=%.2f min=%.2f",
                 candidate.mint[:12], score, min_score,
@@ -243,6 +320,7 @@ class DiscoveryPipeline:
         state.discovery_stats.total_accepted += 1
         state.discovery_stats.total_discovered += 1
         _bump_source_stat(state.discovery_stats, candidate.source_id)
+        _bump_source_sub_stat(state.discovery_stats, candidate.source_id, "accepted")
 
         review_only = getattr(self.config, "discovery_review_only", True)
         if review_only:
@@ -291,6 +369,39 @@ class DiscoveryPipeline:
 
 
 # ------------------------------------------------------------------
+# Metadata truncation (mitigation #4)
+# ------------------------------------------------------------------
+
+def _truncate_metadata(meta: Dict) -> Tuple[bool, Dict]:
+    """
+    Return (was_truncated, safe_meta_dict).
+    If JSON-serialized size > _METADATA_MAX_BYTES, returns a truncated copy.
+    """
+    try:
+        serialized = json.dumps(meta, default=str)
+    except Exception:
+        return True, {}
+
+    if len(serialized.encode("utf-8")) <= _METADATA_MAX_BYTES:
+        return False, meta
+
+    # Truncate: keep keys until we exceed limit
+    truncated: Dict = {}
+    running = 2  # account for "{}"
+    for k, v in meta.items():
+        try:
+            entry = json.dumps({k: v}, default=str)
+        except Exception:
+            continue
+        entry_bytes = len(entry.encode("utf-8")) - 2  # strip outer {}
+        if running + entry_bytes > _METADATA_MAX_BYTES:
+            break
+        truncated[k] = v
+        running += entry_bytes + 1  # +1 for comma
+    return True, truncated
+
+
+# ------------------------------------------------------------------
 # Stat helpers
 # ------------------------------------------------------------------
 
@@ -300,3 +411,16 @@ def _bump_rejection_stat(stats: DiscoveryStats, reason: str) -> None:
 
 def _bump_source_stat(stats: DiscoveryStats, source_id: str) -> None:
     stats.by_source[source_id] = stats.by_source.get(source_id, 0) + 1
+
+
+def _bump_source_sub_stat(stats: DiscoveryStats, source_id: str, field: str) -> None:
+    """Update per-source sub-stats: {source_id: {discovered, accepted, rejected, enqueued}}."""
+    if source_id not in stats.source_stats:
+        stats.source_stats[source_id] = {
+            "discovered": 0,
+            "accepted": 0,
+            "rejected": 0,
+            "enqueued": 0,
+        }
+    bucket = stats.source_stats[source_id]
+    bucket[field] = bucket.get(field, 0) + 1

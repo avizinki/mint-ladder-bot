@@ -98,15 +98,15 @@ def test_discovery_section_truncates_recent_to_10() -> None:
     assert len(section["recent_candidates"]) == 10
 
 
-def test_discovery_section_truncates_rejected_to_5() -> None:
+def test_discovery_section_truncates_rejected_to_10() -> None:
     now = datetime.now(tz=timezone.utc).isoformat()
     records = [
         {"mint": str(i) * 44, "source_id": "test", "symbol": None, "rejection_reason": "score_blocked", "score": 0.0, "discovered_at": now}
-        for i in range(8)
+        for i in range(12)
     ]
     state = {"discovery_rejected_candidates": records}
     section = _build_discovery_section(state)
-    assert len(section["recent_rejected"]) == 5
+    assert len(section["recent_rejected"]) == 10
 
 
 # ---------------------------------------------------------------------------

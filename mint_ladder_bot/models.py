@@ -330,17 +330,27 @@ class DiscoveredCandidateRecord(BaseModel):
 
     record_id: str
     mint: str
-    source_id: str  # "pumpfun" | "watchlist" | "test" | ...
+    source_id: str  # "pumpfun" | "watchlist" | "whale_copy" | "test" | ...
     source_confidence: float  # 0.0–1.0; source-assigned reliability hint
     discovered_at: datetime
     symbol: Optional[str] = None
     liquidity_usd: Optional[float] = None
     deployer: Optional[str] = None
     metadata_blob: Dict = Field(default_factory=dict)
+    metadata_truncated: bool = False  # True if metadata_blob was truncated at record creation
     score: Optional[float] = None
+    score_breakdown: Dict = Field(default_factory=dict)  # per-dimension scores; e.g. {"liquidity": 0.25, "whale_signal": 0.40}
     outcome: Literal["pending", "accepted", "rejected", "enqueued"] = "pending"
     rejection_reason: Optional[str] = None  # stable reason code from token_filter / pipeline
     processed_at: Optional[datetime] = None
+    # Provenance — discovery origin
+    discovery_signals: Dict = Field(default_factory=dict)  # source-specific signals, e.g. trigger_wallet for whale_copy
+    enrichment_data: Dict = Field(default_factory=dict)  # on-chain enrichment: authority_ok, holder_top10_pct, etc.
+    # Approval lineage
+    approval_path: Optional[str] = None  # "auto" | "operator_manual" | None
+    operator_approved_at: Optional[datetime] = None
+    operator_approved_by: Optional[str] = None
+    enqueue_source: Optional[str] = None  # "discovery_auto" | "discovery_operator_approval" | "manual_seed"
 
 
 class DiscoveryStats(BaseModel):
@@ -352,6 +362,12 @@ class DiscoveryStats(BaseModel):
     total_enqueued: int = 0
     by_source: Dict[str, int] = Field(default_factory=dict)
     by_rejection_reason: Dict[str, int] = Field(default_factory=dict)
+    # Per-source sub-stats: source_id -> {discovered, accepted, rejected, enqueued}
+    source_stats: Dict[str, Dict[str, int]] = Field(default_factory=dict)
+    # Enrichment stats
+    enrichment_checks_run: int = 0
+    enrichment_partial_count: int = 0
+    enrichment_hard_reject_count: int = 0
 
 
 class SniperManualSeedQueueEntry(BaseModel):

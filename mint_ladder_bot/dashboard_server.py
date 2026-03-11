@@ -119,12 +119,7 @@ def _build_discovery_section(state: Dict[str, Any] | None) -> Dict[str, Any]:
     recent = s.get("discovery_recent_candidates") or []
     rejected = s.get("discovery_rejected_candidates") or []
 
-    # Source breakdown from stats
-    by_source: Dict[str, int] = {}
-    by_rejection: Dict[str, int] = {}
-    if isinstance(disc_stats, dict):
-        by_source = disc_stats.get("by_source") or {}
-        by_rejection = disc_stats.get("by_rejection_reason") or {}
+    ds: Dict[str, Any] = disc_stats if isinstance(disc_stats, dict) else {}
 
     # review_only mode flag: read from env so operators can see gating mode at a glance.
     review_only: bool = os.getenv("DISCOVERY_REVIEW_ONLY", "true").strip().lower() not in ("0", "false", "no")
@@ -135,20 +130,34 @@ def _build_discovery_section(state: Dict[str, Any] | None) -> Dict[str, Any]:
         for rec in recent[-10:]:
             if not isinstance(rec, dict):
                 continue
+            # Safe extraction of discovery_signals — truncate trigger_wallet for display
+            signals = rec.get("discovery_signals") or {}
+            signals_display: Dict[str, Any] = {}
+            if isinstance(signals, dict):
+                tw = signals.get("trigger_wallet")
+                if tw:
+                    signals_display["trigger_wallet"] = str(tw)[:12] + "..."
+                for k in ("wallet_label", "buy_amount_sol", "signal_type", "price_change_pct_5m"):
+                    if k in signals:
+                        signals_display[k] = signals[k]
             recent_display.append({
                 "mint": rec.get("mint", ""),
                 "source_id": rec.get("source_id"),
                 "symbol": rec.get("symbol"),
                 "score": rec.get("score"),
+                "score_breakdown": rec.get("score_breakdown") or {},
+                "discovery_signals": signals_display,
                 "outcome": rec.get("outcome"),
+                "approval_path": rec.get("approval_path"),
+                "enqueue_source": rec.get("enqueue_source"),
                 "liquidity_usd": rec.get("liquidity_usd"),
                 "discovered_at": rec.get("discovered_at"),
             })
 
-    # Last 5 rejected with reasons — full mint address for debugging.
+    # Last 10 rejected with reasons — full mint address for debugging.
     rejected_display: List[Dict[str, Any]] = []
     if isinstance(rejected, list):
-        for rec in rejected[-5:]:
+        for rec in rejected[-10:]:
             if not isinstance(rec, dict):
                 continue
             rejected_display.append({
@@ -157,26 +166,34 @@ def _build_discovery_section(state: Dict[str, Any] | None) -> Dict[str, Any]:
                 "symbol": rec.get("symbol"),
                 "rejection_reason": rec.get("rejection_reason"),
                 "score": rec.get("score"),
+                "score_breakdown": rec.get("score_breakdown") or {},
                 "discovered_at": rec.get("discovered_at"),
             })
 
-    total_disc = disc_stats.get("total_discovered", 0) if isinstance(disc_stats, dict) else 0
-    total_acc = disc_stats.get("total_accepted", 0) if isinstance(disc_stats, dict) else 0
-    total_rej = disc_stats.get("total_rejected", 0) if isinstance(disc_stats, dict) else 0
-    total_enq = disc_stats.get("total_enqueued", 0) if isinstance(disc_stats, dict) else 0
+    # Per-source sub-stats (v2): {source_id: {discovered, accepted, rejected, enqueued}}
+    source_stats: Dict[str, Any] = ds.get("source_stats") or {}
+
+    # Enrichment stats
+    enrichment_stats: Dict[str, Any] = {
+        "checks_run": ds.get("enrichment_checks_run", 0),
+        "partial_count": ds.get("enrichment_partial_count", 0),
+        "hard_reject_count": ds.get("enrichment_hard_reject_count", 0),
+    }
 
     return {
         "review_only": review_only,
-        "total_discovered": total_disc,
-        "total_accepted": total_acc,
-        "total_rejected": total_rej,
-        "total_enqueued": total_enq,
-        "source_breakdown": by_source,
-        "rejection_reason_breakdown": by_rejection,
+        "total_discovered": ds.get("total_discovered", 0),
+        "total_accepted": ds.get("total_accepted", 0),
+        "total_rejected": ds.get("total_rejected", 0),
+        "total_enqueued": ds.get("total_enqueued", 0),
+        "source_breakdown": ds.get("by_source") or {},
+        "source_stats": source_stats,
+        "rejection_reason_breakdown": ds.get("by_rejection_reason") or {},
         "recent_accepted_count": len(recent) if isinstance(recent, list) else 0,
         "recent_rejected_count": len(rejected) if isinstance(rejected, list) else 0,
         "recent_candidates": recent_display,
         "recent_rejected": rejected_display,
+        "enrichment_stats": enrichment_stats,
     }
 
 

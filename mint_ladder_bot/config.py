@@ -244,6 +244,25 @@ class Config:
     # Bounded history sizes for dashboard.
     discovery_max_history: int = _env_int("DISCOVERY_MAX_HISTORY", 200)
     discovery_max_rejected: int = _env_int("DISCOVERY_MAX_REJECTED", 200)
+    # Whale copy adapter config
+    # Path to JSON file with wallet list: [{"address": "...", "label": "...", "confidence": 0.8}]
+    discovery_whale_wallets_path: Optional[str] = os.getenv("DISCOVERY_WHALE_WALLETS_PATH") or None
+    # Comma-sep wallet addresses (alternative to file; file takes precedence)
+    discovery_whale_wallets: Optional[str] = os.getenv("DISCOVERY_WHALE_WALLETS") or None
+    # Seconds between RPC wallet polls (mitigation #1 — prevents RPC overload)
+    discovery_whale_poll_interval_s: float = _env_float("DISCOVERY_WHALE_POLL_INTERVAL_S", 60.0)
+    # Max wallets to poll per cycle (mitigation #1 — caps RPC calls)
+    discovery_whale_max_wallets: int = _env_int("DISCOVERY_WHALE_MAX_WALLETS", 20)
+    # Max recent transactions to inspect per wallet per poll
+    discovery_whale_tx_lookback: int = _env_int("DISCOVERY_WHALE_TX_LOOKBACK", 10)
+    # Enrichment layer config (mitigation #2 — soft-failure timeouts)
+    discovery_enrichment_call_timeout_s: float = _env_float("DISCOVERY_ENRICHMENT_CALL_TIMEOUT_S", 5.0)
+    discovery_enrichment_total_timeout_s: float = _env_float("DISCOVERY_ENRICHMENT_TOTAL_TIMEOUT_S", 10.0)
+    # Holder concentration hard-block (stage 5, disabled by default)
+    discovery_holder_concentration_enabled: bool = os.getenv("DISCOVERY_HOLDER_CONCENTRATION_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    discovery_holder_top10_max_pct: float = _env_float("DISCOVERY_HOLDER_TOP10_MAX_PCT", 80.0)
+    # LP unlock risk hard-block (stage 5, disabled by default)
+    discovery_lp_unlock_risk_enabled: bool = os.getenv("DISCOVERY_LP_UNLOCK_RISK_ENABLED", "").strip().lower() in ("1", "true", "yes")
 
     # Files
     # Defaults point at centralized runtime paths; callers may override explicitly.
