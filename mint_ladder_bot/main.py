@@ -107,6 +107,40 @@ def sniper_enqueue(
         typer.echo(f"REJECTED reason={reason or 'unknown'} queue_size={queue_size}")
 
 
+@app.command("discovery-approve")
+def discovery_approve(
+    mint: str = typer.Option(..., "--mint", help="Mint address of discovery candidate to approve for execution."),
+    operator: Optional[str] = typer.Option(None, "--operator", help="Operator identifier recorded in provenance (default: 'operator')."),
+) -> None:
+    """
+    Operator-approve a discovery candidate that is in accepted (review-only) state.
+
+    Finds the accepted record for the mint in recent discovery candidates, enqueues
+    it into the sniper manual-seed queue, and records full operator approval provenance
+    (approval_path=operator_manual, operator_approved_at, operator_approved_by,
+    enqueue_source=discovery_operator_approval).
+
+    Requires sniper to be enabled. Discovery must have previously accepted the mint
+    (it must appear in discovery_recent_candidates with outcome=accepted).
+    """
+    _load_env_file()
+    cfg = Config()
+    from .runtime_paths import get_state_path, get_status_path
+    from .sniper_engine.service import SniperService
+
+    state_path = get_state_path()
+    status_path = get_status_path()
+    state = load_state(state_path, status_path)
+    service = SniperService(config=cfg, state=state)
+
+    accepted, reason, queue_size = service.approve_discovery_candidate(mint, operator_id=operator)
+    if accepted:
+        save_state_atomic(state_path, state)
+        typer.echo(f"APPROVED queue_size={queue_size}")
+    else:
+        typer.echo(f"REJECTED reason={reason or 'unknown'} queue_size={queue_size}")
+
+
 def _validate_startup_for_run(
     status: Path,
     state: Path,

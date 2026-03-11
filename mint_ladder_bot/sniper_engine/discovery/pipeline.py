@@ -322,7 +322,7 @@ class DiscoveryPipeline:
         _bump_source_stat(state.discovery_stats, candidate.source_id)
         _bump_source_sub_stat(state.discovery_stats, candidate.source_id, "accepted")
 
-        review_only = getattr(self.config, "discovery_review_only", True)
+        review_only = _resolve_source_review_only(self.config, candidate.source_id)
         if review_only:
             logger.info(
                 "DISCOVERY_ACCEPTED_REVIEW_ONLY mint=%s source=%s score=%.2f",
@@ -331,6 +331,7 @@ class DiscoveryPipeline:
             return record, False
 
         # Should enqueue — caller decides actual enqueue based on sniper_mode
+        record.approval_path = "auto"
         logger.info(
             "DISCOVERY_ACCEPTED mint=%s source=%s score=%.2f",
             candidate.mint[:12], candidate.source_id, score,
@@ -424,3 +425,18 @@ def _bump_source_sub_stat(stats: DiscoveryStats, source_id: str, field: str) -> 
         }
     bucket = stats.source_stats[source_id]
     bucket[field] = bucket.get(field, 0) + 1
+
+
+def _resolve_source_review_only(config: Any, source_id: str) -> bool:
+    """
+    Resolve effective review_only flag for a given source.
+
+    Per-source override (DISCOVERY_REVIEW_ONLY_<SOURCE_ID>) takes precedence.
+    Falls back to global discovery_review_only (default True).
+    """
+    global_ro: bool = getattr(config, "discovery_review_only", True)
+    attr = f"discovery_review_only_{source_id.lower()}"
+    override = getattr(config, attr, None)
+    if override is None:
+        return global_ro
+    return override
