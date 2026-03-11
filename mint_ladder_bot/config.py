@@ -89,6 +89,9 @@ class Config:
         # Manual override reconciliation bypass: global enable + per-mint allow-list (off by default).
         bypass_env = (os.getenv("MANUAL_OVERRIDE_BYPASS_ALLOWED_MINTS") or "").strip()
         self.manual_override_bypass_allowed_mints = [m.strip() for m in bypass_env.split(",") if m.strip()] if bypass_env else []
+        # Discovery source allowlist (empty = all registered sources are allowed)
+        disc_allow = (os.getenv("DISCOVERY_SOURCE_ALLOWLIST") or "").strip()
+        self.discovery_source_allowlist = [s.strip() for s in disc_allow.split(",") if s.strip()] if disc_allow else []
 
     # Trading
     trading_bag_pct: float = _env_float("TRADING_BAG_PCT", 0.20)
@@ -222,6 +225,22 @@ class Config:
     sniper_max_processed_signatures: int = _env_int("SNIPER_MAX_PROCESSED_SIGNATURES", 500)
     sniper_cooldown_retention_seconds: int = _env_int("SNIPER_COOLDOWN_RETENTION_SECONDS", 604800)
     sniper_allow_tier2_success: bool = os.getenv("SNIPER_ALLOW_TIER2_SUCCESS", "false").strip().lower() in ("1", "true", "yes")
+
+    # Discovery phase — all gates default to safe/disabled so live runner is unaffected.
+    # DISCOVERY_ENABLED=true enables the discovery pipeline. Default false = no-op.
+    discovery_enabled: bool = os.getenv("DISCOVERY_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    # Comma-sep source ids to allow. Empty = all registered sources allowed.
+    discovery_source_allowlist: List[str] = field(default_factory=list)  # set in __post_init__
+    # Max new candidates to process per cycle. Prevents flood into execution queue.
+    discovery_max_candidates_per_cycle: int = _env_int("DISCOVERY_MAX_CANDIDATES_PER_CYCLE", 5)
+    # DISCOVERY_REVIEW_ONLY=true (default): candidates are recorded but never enqueued for execution.
+    # Must explicitly set false to allow auto-enqueue (still gated by sniper_mode).
+    discovery_review_only: bool = os.getenv("DISCOVERY_REVIEW_ONLY", "true").strip().lower() not in ("0", "false", "no")
+    # Optional path to watchlist YAML/JSON file (list of mints or {mint, symbol, note}).
+    discovery_watchlist_path: Optional[str] = os.getenv("DISCOVERY_WATCHLIST_PATH") or None
+    # Bounded history sizes for dashboard.
+    discovery_max_history: int = _env_int("DISCOVERY_MAX_HISTORY", 200)
+    discovery_max_rejected: int = _env_int("DISCOVERY_MAX_REJECTED", 200)
 
     # Files
     # Defaults point at centralized runtime paths; callers may override explicitly.

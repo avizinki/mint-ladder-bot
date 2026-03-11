@@ -320,6 +320,40 @@ class RuntimeMintState(BaseModel):
     manual_override_bypass_reason: Optional[str] = None
 
 
+class DiscoveredCandidateRecord(BaseModel):
+    """
+    Persisted snapshot of a discovered candidate — accepted or rejected.
+
+    Written to discovery_recent_candidates (accepted) or discovery_rejected_candidates (rejected)
+    in RuntimeState. Never mutated after creation; outcome is set once at decision time.
+    """
+
+    record_id: str
+    mint: str
+    source_id: str  # "pumpfun" | "watchlist" | "test" | ...
+    source_confidence: float  # 0.0–1.0; source-assigned reliability hint
+    discovered_at: datetime
+    symbol: Optional[str] = None
+    liquidity_usd: Optional[float] = None
+    deployer: Optional[str] = None
+    metadata_blob: Dict = Field(default_factory=dict)
+    score: Optional[float] = None
+    outcome: Literal["pending", "accepted", "rejected", "enqueued"] = "pending"
+    rejection_reason: Optional[str] = None  # stable reason code from token_filter / pipeline
+    processed_at: Optional[datetime] = None
+
+
+class DiscoveryStats(BaseModel):
+    """Counters for the discovery pipeline — persisted per session."""
+
+    total_discovered: int = 0
+    total_accepted: int = 0
+    total_rejected: int = 0
+    total_enqueued: int = 0
+    by_source: Dict[str, int] = Field(default_factory=dict)
+    by_rejection_reason: Dict[str, int] = Field(default_factory=dict)
+
+
 class SniperManualSeedQueueEntry(BaseModel):
     """Manual-seed sniper queue entry (Phase 1: manual_seed source only)."""
 
@@ -425,4 +459,8 @@ class RuntimeState(BaseModel):
     sniper_manual_seed_queue: List[SniperManualSeedQueueEntry] = Field(default_factory=list)
     sniper_stats: SniperStats = Field(default_factory=SniperStats)
     processed_sniper_signatures: List[str] = Field(default_factory=list)
+    # Discovery phase: bounded history of discovered / rejected candidates + counters.
+    discovery_recent_candidates: List[DiscoveredCandidateRecord] = Field(default_factory=list)
+    discovery_rejected_candidates: List[DiscoveredCandidateRecord] = Field(default_factory=list)
+    discovery_stats: DiscoveryStats = Field(default_factory=DiscoveryStats)
 

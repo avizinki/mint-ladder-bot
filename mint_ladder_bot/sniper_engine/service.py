@@ -96,11 +96,37 @@ class SniperService:
 
     def process_candidate_queue(self) -> None:
         """
-        Placeholder: in Phase 1 this will normalize, risk-check, score, and potentially
-        create attempts. For now, strictly no-op.
+        Run the discovery pipeline if discovery is enabled.
+
+        Collects candidates from registered sources, normalizes, filters, scores,
+        and (when review_only=False and mode=live) enqueues accepted candidates.
+
+        Safety gating:
+        - discovery_enabled=False → no-op (default)
+        - discovery_review_only=True (default) → candidates recorded, never enqueued
+        - sniper disabled → never enqueues regardless of review_only setting
         """
         if not self.is_enabled():
             return
-        # No processing yet; sniper structure only at this step.
-        return
+        if not getattr(self.config, "discovery_enabled", False):
+            return
+
+        # Lazy-register sources once per process.
+        try:
+            from .discovery.sources import register_all
+            register_all()
+        except Exception:
+            pass
+
+        from .discovery.pipeline import DiscoveryPipeline
+
+        pipeline = DiscoveryPipeline(config=self.config)
+
+        # Only pass enqueue_fn when gating allows live enqueue.
+        review_only = getattr(self.config, "discovery_review_only", True)
+        enqueue_fn = None
+        if not review_only and self.mode() in ("live", "paper"):
+            enqueue_fn = self.enqueue_manual_seed
+
+        pipeline.run(state=self.state, enqueue_fn=enqueue_fn)
 
