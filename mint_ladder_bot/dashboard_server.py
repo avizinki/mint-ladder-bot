@@ -1128,6 +1128,16 @@ def build_operator_dashboard_payload(data_dir: Path) -> Dict[str, Any]:
     summary_totals["active_lots"] = summary_totals.get("active_lots_count")
     summary_totals["tradable_mints"] = summary_totals.get("tradable_mints_count")
 
+    # Sniper and discovery sections: derived from state, same source as _build_sniper_summary /
+    # _build_discovery_section helpers. Included here so the operator dashboard HTML can consume
+    # them without a separate endpoint. No trading logic is changed.
+    sniper_summary = _build_sniper_summary(state if isinstance(state, dict) else None)
+    sniper_pending_raw = (state or {}).get("sniper_pending_attempts") if isinstance(state, dict) else {}
+    sniper_pending_list = list(sniper_pending_raw.values()) if isinstance(sniper_pending_raw, dict) else []
+    sniper_decisions_list = (state or {}).get("sniper_last_decisions") if isinstance(state, dict) else []
+    if not isinstance(sniper_decisions_list, list):
+        sniper_decisions_list = []
+
     return {
         "header": header,
         "kpis": kpis,
@@ -1142,6 +1152,9 @@ def build_operator_dashboard_payload(data_dir: Path) -> Dict[str, Any]:
             "rows": runtime_token_status_rows,
             "sort_options": ["closest_to_sell", "highest_value", "highest_pnl", "largest_position"],
         },
+        "sniper_summary": sniper_summary,
+        "sniper_pending_attempts": sniper_pending_list,
+        "sniper_recent_decisions": sniper_decisions_list[-20:],
         "discovery": _build_discovery_section(state if isinstance(state, dict) else None),
     }
 
