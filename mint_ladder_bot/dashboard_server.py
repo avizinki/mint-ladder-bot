@@ -1142,6 +1142,7 @@ def build_operator_dashboard_payload(data_dir: Path) -> Dict[str, Any]:
             "rows": runtime_token_status_rows,
             "sort_options": ["closest_to_sell", "highest_value", "highest_pnl", "largest_position"],
         },
+        "discovery": _build_discovery_section(state if isinstance(state, dict) else None),
     }
 
 
