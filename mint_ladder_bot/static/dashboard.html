@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mint Ladder — Operator Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;background:#0d1117;color:#c9d1d9;min-height:100vh}
+a{color:#58a6ff;text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* layout */
+.page{max-width:1400px;margin:0 auto;padding:12px 16px}
+.topbar{display:flex;align-items:center;gap:12px;padding:8px 0 12px;border-bottom:1px solid #21262d;flex-wrap:wrap}
+.topbar-title{font-size:15px;font-weight:700;color:#f0f6fc}
+.badge{display:inline-block;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600}
+.badge-ok{background:#0f4d26;color:#3fb950}
+.badge-warn{background:#4d3800;color:#d29922}
+.badge-err{background:#4d0f0f;color:#f85149}
+.badge-off{background:#21262d;color:#8b949e}
+.badge-blue{background:#0c2d6b;color:#58a6ff}
+.topbar-meta{font-size:11px;color:#8b949e;margin-left:auto}
+.refresh-btn{padding:3px 10px;background:#21262d;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;cursor:pointer;font-size:12px;font-family:inherit}
+.refresh-btn:hover{background:#30363d}
+
+/* sections */
+.section{margin:16px 0}
+.section-title{font-size:12px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #21262d}
+
+/* grid of stat cards */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+.stat-card{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:8px 10px}
+.stat-label{font-size:11px;color:#8b949e;margin-bottom:3px}
+.stat-value{font-size:14px;font-weight:600;color:#f0f6fc;word-break:break-all}
+.stat-value.ok{color:#3fb950}
+.stat-value.warn{color:#d29922}
+.stat-value.err{color:#f85149}
+.stat-value.muted{color:#8b949e}
+
+/* tables */
+.tbl-wrap{overflow-x:auto;margin-top:6px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:5px 8px;background:#161b22;color:#8b949e;border-bottom:1px solid #21262d;white-space:nowrap}
+td{padding:5px 8px;border-bottom:1px solid #161b22;vertical-align:top;word-break:break-word}
+tr:hover td{background:#161b22}
+.mint-cell{font-family:ui-monospace,monospace;font-size:11px;color:#79c0ff;user-select:all;cursor:pointer;max-width:340px;word-break:break-all}
+.mint-cell:hover{color:#a5d6ff}
+.score-hi{color:#3fb950}
+.score-mid{color:#d29922}
+.score-lo{color:#f85149}
+
+/* two-column layout for summary+breakdown */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:700px){.two-col{grid-template-columns:1fr}}
+
+/* event feed */
+.event-feed{max-height:220px;overflow-y:auto;background:#161b22;border:1px solid #21262d;border-radius:6px;padding:6px}
+.event-row{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid #0d1117;font-size:11px}
+.event-ts{color:#8b949e;white-space:nowrap;flex-shrink:0}
+.event-type{color:#d2a8ff;white-space:nowrap;flex-shrink:0}
+.event-data{color:#c9d1d9;word-break:break-all}
+
+/* discovery/sniper color accents */
+.disc-section{border-left:3px solid #1f6feb;padding-left:10px}
+.sniper-section{border-left:3px solid #388bfd;padding-left:10px}
+
+/* status indicator */
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+.dot-green{background:#3fb950}
+.dot-yellow{background:#d29922}
+.dot-red{background:#f85149}
+.dot-grey{background:#8b949e}
+
+/* review-only banner */
+.banner{padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;margin-bottom:10px}
+.banner-review{background:#0c2d6b;color:#58a6ff;border:1px solid #1f6feb}
+.banner-live{background:#0f4d26;color:#3fb950;border:1px solid #238636}
+
+/* empty state */
+.empty{color:#8b949e;font-size:12px;padding:8px 0;font-style:italic}
+
+/* error overlay */
+#error-bar{display:none;background:#4d0f0f;color:#f85149;padding:6px 12px;border-radius:6px;margin-bottom:12px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="page">
+  <div id="error-bar"></div>
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <span class="topbar-title">⬡ Mint Ladder</span>
+    <span id="tb-mode" class="badge badge-off">—</span>
+    <span id="tb-rpc" class="badge badge-off">RPC —</span>
+    <span id="tb-alerts" class="badge badge-off">0 alerts</span>
+    <span id="tb-wallet" style="font-size:12px;color:#8b949e">wallet —</span>
+    <span id="tb-sol" style="font-size:13px;color:#f0f6fc">— SOL</span>
+    <span class="topbar-meta">
+      cycle <span id="tb-cycle">—</span> &nbsp;|&nbsp;
+      refreshed <span id="tb-refresh">—</span>
+      <button class="refresh-btn" onclick="fetchDashboard()">↻ now</button>
+    </span>
+  </div>
+
+  <!-- RUNTIME HEALTH -->
+  <div class="section">
+    <div class="section-title">Runtime Health</div>
+    <div class="stat-grid" id="health-grid">
+      <div class="stat-card"><div class="stat-label">bot state</div><div class="stat-value muted" id="h-state">—</div></div>
+      <div class="stat-card"><div class="stat-label">trading disabled</div><div class="stat-value muted" id="h-trading">—</div></div>
+      <div class="stat-card"><div class="stat-label">rpc latency</div><div class="stat-value muted" id="h-latency">—</div></div>
+      <div class="stat-card"><div class="stat-label">open positions</div><div class="stat-value muted" id="h-open">—</div></div>
+      <div class="stat-card"><div class="stat-label">active lots</div><div class="stat-value muted" id="h-lots">—</div></div>
+      <div class="stat-card"><div class="stat-label">realized pnl</div><div class="stat-value muted" id="h-pnl">—</div></div>
+    </div>
+  </div>
+
+  <!-- SNIPER SUMMARY -->
+  <div class="section sniper-section">
+    <div class="section-title">Sniper</div>
+    <div class="stat-grid" id="sniper-grid">
+      <div class="stat-card"><div class="stat-label">enabled</div><div class="stat-value muted" id="s-enabled">—</div></div>
+      <div class="stat-card"><div class="stat-label">mode</div><div class="stat-value muted" id="s-mode">—</div></div>
+      <div class="stat-card"><div class="stat-label">discovery enabled</div><div class="stat-value muted" id="s-disc-enabled">—</div></div>
+      <div class="stat-card"><div class="stat-label">manual queue</div><div class="stat-value muted" id="s-queue">—</div></div>
+      <div class="stat-card"><div class="stat-label">pending attempts</div><div class="stat-value muted" id="s-pending">—</div></div>
+      <div class="stat-card"><div class="stat-label">open sniper positions</div><div class="stat-value muted" id="s-positions">—</div></div>
+      <div class="stat-card"><div class="stat-label">success 1h</div><div class="stat-value muted" id="s-1h">—</div></div>
+      <div class="stat-card"><div class="stat-label">success 24h</div><div class="stat-value muted" id="s-24h">—</div></div>
+      <div class="stat-card"><div class="stat-label">last decision</div><div class="stat-value muted" id="s-last-dec">—</div></div>
+      <div class="stat-card"><div class="stat-label">last buy</div><div class="stat-value muted" id="s-last-buy">—</div></div>
+    </div>
+  </div>
+
+  <!-- SNIPER ATTEMPTS -->
+  <div class="section sniper-section">
+    <div class="section-title">Sniper Attempts</div>
+    <div id="sniper-attempts-wrap">
+      <p class="empty">No attempt data available.</p>
+    </div>
+  </div>
+
+  <!-- DISCOVERY SUMMARY -->
+  <div class="section disc-section">
+    <div class="section-title">Discovery</div>
+    <div id="disc-banner"></div>
+    <div class="two-col">
+      <div>
+        <div class="stat-grid" id="disc-grid">
+          <div class="stat-card"><div class="stat-label">total discovered</div><div class="stat-value muted" id="d-total">—</div></div>
+          <div class="stat-card"><div class="stat-label">total accepted</div><div class="stat-value muted" id="d-accepted">—</div></div>
+          <div class="stat-card"><div class="stat-label">total rejected</div><div class="stat-value muted" id="d-rejected">—</div></div>
+          <div class="stat-card"><div class="stat-label">total enqueued</div><div class="stat-value muted" id="d-enqueued">—</div></div>
+          <div class="stat-card"><div class="stat-label">recent candidates</div><div class="stat-value muted" id="d-recent-cnt">—</div></div>
+          <div class="stat-card"><div class="stat-label">recent rejected</div><div class="stat-value muted" id="d-rej-cnt">—</div></div>
+        </div>
+      </div>
+      <div>
+        <div style="margin-bottom:10px">
+          <div class="section-title" style="margin-bottom:6px">Source Breakdown</div>
+          <div id="disc-sources"><p class="empty">—</p></div>
+        </div>
+        <div>
+          <div class="section-title" style="margin-bottom:6px">Rejection Reasons</div>
+          <div id="disc-rejection-reasons"><p class="empty">—</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DISCOVERY RECENT CANDIDATES -->
+  <div class="section disc-section">
+    <div class="section-title">Discovery — Recent Candidates</div>
+    <div class="tbl-wrap" id="disc-candidates-wrap">
+      <p class="empty">No candidates yet.</p>
+    </div>
+  </div>
+
+  <!-- DISCOVERY RECENT REJECTED -->
+  <div class="section disc-section">
+    <div class="section-title">Discovery — Recent Rejected</div>
+    <div class="tbl-wrap" id="disc-rejected-wrap">
+      <p class="empty">No rejected candidates yet.</p>
+    </div>
+  </div>
+
+  <!-- POSITIONS -->
+  <div class="section">
+    <div class="section-title">Positions</div>
+    <div class="tbl-wrap" id="positions-wrap">
+      <p class="empty">No positions.</p>
+    </div>
+  </div>
+
+  <!-- RECENT EVENTS -->
+  <div class="section">
+    <div class="section-title">Recent Events &nbsp;<span style="font-size:11px;font-weight:400;color:#8b949e">(latest first)</span></div>
+    <div class="event-feed" id="event-feed">
+      <p class="empty">No events.</p>
+    </div>
+  </div>
+
+  <!-- QUICK LINKS -->
+  <div class="section" style="margin-top:24px;padding-top:10px;border-top:1px solid #21262d">
+    <span style="color:#8b949e;font-size:11px">raw files: </span>
+    <a href="/state.json" target="_blank">state.json</a> &nbsp;
+    <a href="/status.json" target="_blank">status.json</a> &nbsp;
+    <a href="/events.jsonl" target="_blank">events.jsonl</a> &nbsp;
+    <a href="/run.log" target="_blank">run.log</a> &nbsp;
+    <a href="/runtime/dashboard" target="_blank">dashboard.json</a>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const REFRESH_MS = 15000;
+let refreshTimer = null;
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+function esc(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function fmtNum(v, decimals=4) {
+  if (v == null || v === "") return "—";
+  const n = parseFloat(v);
+  if (isNaN(n)) return esc(v);
+  return n.toFixed(decimals);
+}
+function fmtTs(ts) {
+  if (!ts) return "—";
+  // ts may be unix seconds (int) or ISO string
+  let d;
+  if (typeof ts === "number") {
+    d = new Date(ts < 1e12 ? ts * 1000 : ts);
+  } else {
+    d = new Date(ts);
+  }
+  if (isNaN(d)) return esc(String(ts));
+  const now = new Date();
+  const diffMs = now - d;
+  if (diffMs < 0) return d.toLocaleTimeString();
+  if (diffMs < 60000) return Math.floor(diffMs/1000) + "s ago";
+  if (diffMs < 3600000) return Math.floor(diffMs/60000) + "m ago";
+  if (diffMs < 86400000) return Math.floor(diffMs/3600000) + "h ago";
+  return d.toLocaleDateString() + " " + d.toLocaleTimeString();
+}
+function scoreClass(s) {
+  if (s == null) return "";
+  if (s >= 0.6) return "score-hi";
+  if (s >= 0.3) return "score-mid";
+  return "score-lo";
+}
+function setText(id, text, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text == null ? "—" : String(text);
+  if (cls) { el.className = "stat-value " + cls; }
+}
+function boolBadge(v) {
+  if (v === true) return '<span class="badge badge-ok">yes</span>';
+  if (v === false) return '<span class="badge badge-off">no</span>';
+  return "—";
+}
+function copyMint(el) {
+  const mint = el.dataset.mint;
+  if (!mint) return;
+  navigator.clipboard.writeText(mint).catch(()=>{});
+  el.style.color = "#a5d6ff";
+  setTimeout(()=>{ el.style.color = ""; }, 800);
+}
+function kbBreakdown(obj) {
+  if (!obj || typeof obj !== "object" || !Object.keys(obj).length) return '<p class="empty">—</p>';
+  let html = '<table><tr><th>key</th><th>count</th></tr>';
+  for (const [k, v] of Object.entries(obj)) {
+    html += `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`;
+  }
+  html += "</table>";
+  return html;
+}
+
+// ── render sections ───────────────────────────────────────────────────────────
+function renderTopBar(d) {
+  const h = d.header || {};
+  const kpis = d.kpis || {};
+  const mode = h.mode || h.runner_mode || "—";
+  const modeEl = document.getElementById("tb-mode");
+  modeEl.textContent = mode;
+  modeEl.className = "badge " + (mode === "live" ? "badge-ok" : mode === "paper" ? "badge-warn" : "badge-off");
+
+  const rpcOk = (d.runtime || {}).ok;
+  const rpcEl = document.getElementById("tb-rpc");
+  const lat = (d.header || {}).rpc_latency_ms;
+  rpcEl.textContent = "RPC " + (rpcOk === true ? (lat != null ? lat + "ms" : "ok") : rpcOk === false ? "err" : "—");
+  rpcEl.className = "badge " + (rpcOk === true ? "badge-ok" : rpcOk === false ? "badge-err" : "badge-off");
+
+  const alerts = h.alerts_count || 0;
+  const alertEl = document.getElementById("tb-alerts");
+  alertEl.textContent = alerts + " alert" + (alerts === 1 ? "" : "s");
+  alertEl.className = "badge " + (alerts > 0 ? "badge-err" : "badge-ok");
+
+  document.getElementById("tb-wallet").textContent = "wallet " + (h.wallet_short || h.wallet_full || "—");
+  const sol = kpis.wallet_sol != null ? fmtNum(kpis.wallet_sol, 4) + " SOL" : "— SOL";
+  document.getElementById("tb-sol").textContent = sol;
+  document.getElementById("tb-cycle").textContent = d.cycle_index != null ? d.cycle_index : "—";
+  document.getElementById("tb-refresh").textContent = fmtTs(d.generated_at);
+}
+
+function renderHealth(d) {
+  const h = d.header || {};
+  const kpis = d.kpis || {};
+  const rt = d.runtime || {};
+  const state = h.runtime_status || rt.bot_state || "—";
+  const stateEl = document.getElementById("h-state");
+  stateEl.textContent = state;
+  stateEl.className = "stat-value " + (state === "running" ? "ok" : state === "degraded" ? "warn" : "muted");
+
+  const tradDis = h.trading_disabled;
+  const tradEl = document.getElementById("h-trading");
+  tradEl.textContent = tradDis === true ? "YES" : tradDis === false ? "no" : "—";
+  tradEl.className = "stat-value " + (tradDis === true ? "err" : tradDis === false ? "ok" : "muted");
+
+  const lat = h.rpc_latency_ms;
+  setText("h-latency", lat != null ? lat + " ms" : "—", lat != null ? (lat < 400 ? "ok" : lat < 1000 ? "warn" : "err") : "muted");
+  setText("h-open", kpis.open_positions_count != null ? kpis.open_positions_count : "—", "");
+  setText("h-lots", kpis.active_lots_count != null ? kpis.active_lots_count : "—", "");
+  const pnl = kpis.realized_pnl_sol;
+  setText("h-pnl", pnl != null ? (pnl >= 0 ? "+" : "") + fmtNum(pnl, 4) + " SOL" : "—",
+    pnl == null ? "muted" : pnl > 0 ? "ok" : pnl < 0 ? "err" : "muted");
+}
+
+function renderSniper(d) {
+  const s = d.sniper_summary || {};
+  setText("s-enabled", s.enabled != null ? (s.enabled ? "yes" : "no") : "—", s.enabled ? "ok" : "muted");
+  setText("s-mode", s.mode || "—", s.mode === "live" ? "ok" : s.mode === "paper" ? "warn" : "muted");
+  setText("s-disc-enabled", s.discovery_enabled != null ? (s.discovery_enabled ? "yes" : "no") : "—", s.discovery_enabled ? "ok" : "muted");
+  setText("s-queue", s.manual_seed_queue_size != null ? s.manual_seed_queue_size : "—", s.manual_seed_queue_size > 0 ? "warn" : "muted");
+  setText("s-pending", s.pending_attempts_count != null ? s.pending_attempts_count : "—", s.pending_attempts_count > 0 ? "warn" : "muted");
+  setText("s-positions", s.open_sniper_positions_count != null ? s.open_sniper_positions_count : "—", "");
+  setText("s-1h", s.recent_success_count_1h != null ? s.recent_success_count_1h : "—", "");
+  setText("s-24h", s.recent_success_count_24h != null ? s.recent_success_count_24h : "—", "");
+  setText("s-last-dec", s.last_decision_at != null ? fmtTs(s.last_decision_at) : "—", "muted");
+  setText("s-last-buy", s.last_buy_at != null ? fmtTs(s.last_buy_at) : "—", "muted");
+
+  // Attempts table: combine pending + decisions
+  const pending = Array.isArray(d.sniper_pending_attempts) ? d.sniper_pending_attempts : [];
+  const decisions = Array.isArray(d.sniper_recent_decisions) ? d.sniper_recent_decisions : [];
+  const wrap = document.getElementById("sniper-attempts-wrap");
+  if (!pending.length && !decisions.length) {
+    wrap.innerHTML = '<p class="empty">No attempt data available — attempts appear here once sniper executes.</p>';
+    return;
+  }
+  let html = "";
+  if (pending.length) {
+    html += '<div style="margin-bottom:8px"><strong style="font-size:11px;color:#8b949e">PENDING ATTEMPTS</strong></div>';
+    html += '<div class="tbl-wrap"><table><tr><th>attempt_id</th><th>mint</th><th>symbol</th><th>state</th><th>source</th><th>score</th><th>created</th><th>quoted</th><th>submitted</th><th>sig</th><th>confirmed_via</th><th>resolution</th></tr>';
+    for (const a of pending) {
+      const scoreVal = a.score_total != null ? parseFloat(a.score_total).toFixed(3) : "—";
+      html += `<tr>
+        <td style="font-size:11px;color:#8b949e">${esc(a.attempt_id||"").slice(0,12)}</td>
+        <td><span class="mint-cell" data-mint="${esc(a.mint||"")}" onclick="copyMint(this)" title="click to copy">${esc(a.mint||"")}</span></td>
+        <td>${esc(a.symbol||"—")}</td>
+        <td><span class="badge badge-blue">${esc(a.state||"—")}</span></td>
+        <td>${esc(a.discovery_source||"—")}</td>
+        <td class="${scoreClass(a.score_total)}">${scoreVal}</td>
+        <td>${fmtTs(a.created_at)}</td>
+        <td>${fmtTs(a.quoted_at)}</td>
+        <td>${fmtTs(a.submitted_at)}</td>
+        <td style="font-size:11px">${a.signature ? esc(a.signature.slice(0,16))+"…" : "—"}</td>
+        <td>${esc(a.confirmed_via||"—")}</td>
+        <td>${esc(a.resolution_reason||"—")}</td>
+      </tr>`;
+    }
+    html += "</table></div>";
+  }
+  if (decisions.length) {
+    html += '<div style="margin:8px 0 4px"><strong style="font-size:11px;color:#8b949e">RECENT DECISIONS</strong></div>';
+    html += '<div class="tbl-wrap"><table><tr><th>ts</th><th>mint</th><th>symbol</th><th>outcome</th><th>source</th><th>score</th><th>reasons</th></tr>';
+    for (const dec of decisions) {
+      const scoreVal = dec.score_total != null ? parseFloat(dec.score_total).toFixed(3) : "—";
+      html += `<tr>
+        <td>${fmtTs(dec.ts)}</td>
+        <td><span class="mint-cell" data-mint="${esc(dec.mint||"")}" onclick="copyMint(this)" title="click to copy">${esc(dec.mint||"")}</span></td>
+        <td>${esc(dec.symbol||"—")}</td>
+        <td>${esc(dec.outcome||"—")}</td>
+        <td>${esc(dec.discovery_source||"—")}</td>
+        <td class="${scoreClass(dec.score_total)}">${scoreVal}</td>
+        <td style="font-size:11px">${esc((dec.reason_codes||[]).join(", ")||"—")}</td>
+      </tr>`;
+    }
+    html += "</table></div>";
+  }
+  wrap.innerHTML = html;
+}
+
+function renderDiscovery(d) {
+  const disc = d.discovery || {};
+
+  // review-only banner
+  const bannerEl = document.getElementById("disc-banner");
+  if (disc.review_only === true) {
+    bannerEl.innerHTML = '<div class="banner banner-review">🔍 REVIEW-ONLY MODE — discovery is active but will not auto-enqueue. Approve candidates manually via CLI.</div>';
+  } else if (disc.review_only === false) {
+    bannerEl.innerHTML = '<div class="banner banner-live">⚡ LIVE ENQUEUE MODE — accepted candidates will be auto-enqueued when score and gating pass.</div>';
+  } else {
+    bannerEl.innerHTML = "";
+  }
+
+  setText("d-total", disc.total_discovered != null ? disc.total_discovered : "—", "");
+  setText("d-accepted", disc.total_accepted != null ? disc.total_accepted : "—", disc.total_accepted > 0 ? "ok" : "muted");
+  setText("d-rejected", disc.total_rejected != null ? disc.total_rejected : "—", disc.total_rejected > 0 ? "warn" : "muted");
+  setText("d-enqueued", disc.total_enqueued != null ? disc.total_enqueued : "—", disc.total_enqueued > 0 ? "ok" : "muted");
+  setText("d-recent-cnt", disc.recent_accepted_count != null ? disc.recent_accepted_count : "—", "");
+  setText("d-rej-cnt", disc.recent_rejected_count != null ? disc.recent_rejected_count : "—", "");
+
+  document.getElementById("disc-sources").innerHTML = kbBreakdown(disc.source_breakdown);
+  document.getElementById("disc-rejection-reasons").innerHTML = kbBreakdown(disc.rejection_reason_breakdown);
+
+  // candidates table
+  const candidatesWrap = document.getElementById("disc-candidates-wrap");
+  const candidates = disc.recent_candidates || [];
+  if (!candidates.length) {
+    candidatesWrap.innerHTML = '<p class="empty">No candidates in current window. Enable DISCOVERY_ENABLED=true and add a watchlist to populate.</p>';
+  } else {
+    let html = '<table><tr><th>#</th><th>mint (click to copy)</th><th>symbol</th><th>source</th><th>score</th><th>note</th></tr>';
+    candidates.forEach((c, i) => {
+      const score = c.score != null ? parseFloat(c.score).toFixed(3) : "—";
+      html += `<tr>
+        <td style="color:#8b949e">${i+1}</td>
+        <td><span class="mint-cell" data-mint="${esc(c.mint||"")}" onclick="copyMint(this)" title="click to copy full address">${esc(c.mint||"—")}</span></td>
+        <td>${esc(c.symbol||"—")}</td>
+        <td><span class="badge badge-blue">${esc(c.source_id||"—")}</span></td>
+        <td class="${scoreClass(c.score)}">${score}</td>
+        <td style="color:#8b949e;font-size:11px">${esc(c.note||"")}</td>
+      </tr>`;
+    });
+    html += "</table>";
+    candidatesWrap.innerHTML = html;
+  }
+
+  // rejected table
+  const rejWrap = document.getElementById("disc-rejected-wrap");
+  const rejected = disc.recent_rejected || [];
+  if (!rejected.length) {
+    rejWrap.innerHTML = '<p class="empty">No rejected candidates in current window.</p>';
+  } else {
+    let html = '<table><tr><th>#</th><th>mint (click to copy)</th><th>symbol</th><th>source</th><th>score</th><th>reject reason</th></tr>';
+    rejected.forEach((r, i) => {
+      const score = r.score != null ? parseFloat(r.score).toFixed(3) : "—";
+      html += `<tr>
+        <td style="color:#8b949e">${i+1}</td>
+        <td><span class="mint-cell" data-mint="${esc(r.mint||"")}" onclick="copyMint(this)" title="click to copy full address">${esc(r.mint||"—")}</span></td>
+        <td>${esc(r.symbol||"—")}</td>
+        <td><span class="badge badge-off">${esc(r.source_id||"—")}</span></td>
+        <td class="${scoreClass(r.score)}">${score}</td>
+        <td style="color:#f85149;font-size:12px">${esc(r.reject_reason||"—")}</td>
+      </tr>`;
+    });
+    html += "</table>";
+    rejWrap.innerHTML = html;
+  }
+}
+
+function renderPositions(d) {
+  const tokens = d.tokens || [];
+  const wrap = document.getElementById("positions-wrap");
+  if (!tokens.length) {
+    wrap.innerHTML = '<p class="empty">No positions tracked.</p>';
+    return;
+  }
+  let html = '<table><tr><th>symbol</th><th>mint (click to copy)</th><th>balance</th><th>lots</th><th>entry sol</th><th>price sol</th><th>unrealized</th><th>status</th></tr>';
+  for (const t of tokens) {
+    if (!t || typeof t !== "object") continue;
+    const mint = t.mint || "";
+    const sym = t.symbol || mint.slice(0, 8);
+    const bal = t.balance_ui != null ? fmtNum(t.balance_ui, 2) : "—";
+    const lots = t.active_lots_count != null ? t.active_lots_count : "—";
+    const entry = t.entry_sol_per_token != null ? fmtNum(t.entry_sol_per_token, 8) : "—";
+    const price = t.current_price_sol != null ? fmtNum(t.current_price_sol, 8) : "—";
+    const unreal = t.unrealized_sol != null ? (t.unrealized_sol >= 0 ? "+" : "") + fmtNum(t.unrealized_sol, 4) + " SOL" : "—";
+    const unrCls = t.unrealized_sol == null ? "" : t.unrealized_sol > 0 ? "ok" : t.unrealized_sol < 0 ? "err" : "";
+    const status = t.bag_zero_reason || t.sell_blocked_reason || "";
+    html += `<tr>
+      <td style="font-weight:600">${esc(sym)}</td>
+      <td><span class="mint-cell" data-mint="${esc(mint)}" onclick="copyMint(this)" title="click to copy">${esc(mint)}</span></td>
+      <td>${esc(bal)}</td>
+      <td>${esc(lots)}</td>
+      <td style="font-size:11px">${esc(entry)}</td>
+      <td style="font-size:11px">${esc(price)}</td>
+      <td class="${unrCls}">${esc(unreal)}</td>
+      <td style="font-size:11px;color:#8b949e">${esc(status)}</td>
+    </tr>`;
+  }
+  html += "</table>";
+  wrap.innerHTML = html;
+}
+
+function renderEvents(d) {
+  const events = d.recent_events || d.recent_buys || [];
+  const feed = document.getElementById("event-feed");
+  if (!events.length) {
+    feed.innerHTML = '<p class="empty">No events.</p>';
+    return;
+  }
+  let html = "";
+  for (const ev of events.slice(0, 100)) {
+    if (!ev || typeof ev !== "object") continue;
+    const ts = fmtTs(ev.ts || ev.timestamp);
+    const type = ev.event || ev.type || "event";
+    const note = ev.note || ev.message || (ev.mint ? ("mint=" + (ev.mint_short || ev.mint)) : "") || "";
+    html += `<div class="event-row"><span class="event-ts">${esc(ts)}</span><span class="event-type">${esc(type)}</span><span class="event-data">${esc(note)}</span></div>`;
+  }
+  feed.innerHTML = html || '<p class="empty">No events.</p>';
+}
+
+// ── fetch & render ────────────────────────────────────────────────────────────
+async function fetchDashboard() {
+  const errBar = document.getElementById("error-bar");
+  try {
+    const resp = await fetch("/runtime/dashboard", { cache: "no-store" });
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const data = await resp.json();
+    errBar.style.display = "none";
+    renderTopBar(data);
+    renderHealth(data);
+    renderSniper(data);
+    renderDiscovery(data);
+    renderPositions(data);
+    renderEvents(data);
+  } catch (e) {
+    errBar.textContent = "Dashboard fetch failed: " + e.message + " — retrying in " + (REFRESH_MS/1000) + "s";
+    errBar.style.display = "block";
+  }
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(fetchDashboard, REFRESH_MS);
+}
+
+fetchDashboard();
+</script>
+</body>
+</html>
